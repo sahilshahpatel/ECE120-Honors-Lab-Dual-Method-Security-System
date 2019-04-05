@@ -93,8 +93,6 @@ void loop() {
   // Read from keypad
   char key = keypad.getKey();
   if (key){
-    Serial.print(key);
-    Serial.println(" pressed");
     // Check if # was pressed
     if (key == '#'){
       lcd.clear();
@@ -103,14 +101,12 @@ void loop() {
       Serial.println("Comparing passwords...");
       
       byte inputPassword[PASSWORD_LENGTH];
-      int clockDelay = 100;
+
+      // Check for equality with code
       for(int i = 0; i < PASSWORD_LENGTH; i++){
         byte input = EEPROM.read(INPUT_PASSWORD_BASE_ADDR + i);
         byte correct = EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i);
         inputPassword[i] = input;
-        Serial.print(input);
-        Serial.print(" | ");
-        Serial.println(correct);
         debug_pass_accpt = debug_pass_accpt && (input == correct);
       }
 
@@ -118,7 +114,8 @@ void loop() {
         Serial.println("***PASS ACCEPTED***");
       }
       
-      outputToComparator(inputPassword, PASSWORD_LENGTH, clockDelay);
+      outputToComparator(inputPassword, PASSWORD_LENGTH, 100);
+      
       // If comparator has accepted the password...
       if(digitalRead(passAcceptedPin) == HIGH){
         granted(10);
@@ -138,7 +135,7 @@ void loop() {
        */
     }
     else{
-      // Record the pressed button into EEPROM
+      // Record the pressed button into EEPROM if not over max length
       if(currentPasswordAddr < INPUT_PASSWORD_BASE_ADDR + PASSWORD_LENGTH){        
         EEPROM.write(INPUT_PASSWORD_BASE_ADDR + currentPasswordAddr, (byte)charToInt(key));
         currentPasswordAddr += 1;
