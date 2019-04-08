@@ -11,13 +11,12 @@ const byte keys[ROWS][COLS] = {
   {'7', '8', '9'},
   {'*', '0', '#'}
 };
-const byte rowPins[ROWS] = {28, 30, 32, 34};
-const byte colPins[COLS] = {22, 24, 26};
+const byte rowPins[ROWS] = {53, 51, 49, 47};
+const byte colPins[COLS] = {52, 50, 48};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 // Set up LCD Display
-LiquidCrystal lcd = LiquidCrystal(53, 51, 49, 47, 45, 43, 41, 39, 37, 35, 33); //rs, rw, enable, d0-d7)
-
+LiquidCrystal lcd = LiquidCrystal(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13); //rs, rw, enable, d0-d7S
 
 void setup() {
   // initialize pinModes
@@ -27,7 +26,7 @@ void setup() {
   for(int i = 0; i < COLS; i++){
     pinMode(colPins[i], INPUT);
   }
-  for(int i = 53; i >=33; i-=2){
+  for(int i = 3; i <=13; i++){
     pinMode(i, INPUT);
   }
   

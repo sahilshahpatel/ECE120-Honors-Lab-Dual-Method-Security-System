@@ -13,78 +13,73 @@
 #define LED_OFF HIGH
 
 // Define pins
-#define redLed 30 // Password Denied
-#define greenLed 31 // Password Accepted
-#define blueLed 32 // Standby
-#define clockPin 10
-#define inputPassPin 11
-#define accptPassPin 12
-#define passAcceptedPin 19 // Output of comparator circuit
+#define inputPassPin0 22
+#define accptPassPin0 23
+#define passAcceptedPin 2 // Output of comparator circuit
 
 // Define EEPROM addresses
 #define INPUT_PASSWORD_BASE_ADDR 0
 #define ACCEPTABLE_PASSWORD_BASE_ADDR 5
-#define PASSWORD_LENGTH 4
+#define PASSWORD_LENGTH 3
 
 // Define program variables
-boolean match = false;
+bool match = false;
+bool resettingPassword = false;
 byte currentPasswordAddr = 0;
-const int clockDelay = 10;
 
 // Set up MFRC522 RFID instance
-#define SS_PIN 40
+/*#define SS_PIN 40
 #define RST_PIN 5
-MFRC522 mfrc522(SS_PIN, RST_PIN);
+MFRC522 mfrc522(SS_PIN, RST_PIN);*/
 
 // Set up LCD
-LiquidCrystal lcd = LiquidCrystal(1, 2, 3, 4, 5, 6/*TODO: set LCD pins*/);
+LiquidCrystal lcd = LiquidCrystal(3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13); //rs, rw, enable, d0-d7S
 
 // Set up 4x3 Matrix Keypad
 const byte ROWS = 4;
 const byte COLS = 3;
-// Define byte values for each item. * = 10, # = 11
+// Define char values (as byte) for each item
 const byte keys[ROWS][COLS] = {
   {'1', '2', '3'},
   {'4', '5', '6'},
   {'7', '8', '9'},
   {'*', '0', '#'}
 };
-const byte rowPins[ROWS] = {28, 30, 32, 34};
-const byte colPins[COLS] = {22, 24, 26};
+const byte rowPins[ROWS] = {53, 51, 49, 47};
+const byte colPins[COLS] = {52, 50, 48};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 void setup() {
   // intialiaze pinModes
-  pinMode(redLed, OUTPUT);
-  pinMode(greenLed, OUTPUT);
-  pinMode(blueLed, OUTPUT);
-  pinMode(inputPassPin, OUTPUT);
-  pinMode(accptPassPin, OUTPUT);
+  for(int i = 0; i<4*PASSWORD_LENGTH; i++){
+    pinMode(inputPassPin0 + 2*i, OUTPUT);
+    pinMode(accptPassPin0 + 2*i, OUTPUT);
+  }
   pinMode(passAcceptedPin, INPUT);
-
   for(int i = 0; i < ROWS; i++){
     pinMode(rowPins[i], INPUT);
   }
   for(int i = 0; i < COLS; i++){
     pinMode(colPins[i], INPUT);
   }
-  
-  // Set initial variable states
-  reset();
+  for(int i = 3; i<=13; i++){
+    pinMode(i, INPUT);
+  }
 
   // Initialize communications
   Serial.begin(9600); // Serial communication with computer
-  SPI.begin(); // for MFRC522
-  mfrc522.PCD_Init();
+  /*SPI.begin(); // for MFRC522
+  mfrc522.PCD_Init();*/
   lcd.begin(16, 2);
 
   // Set RFID read range to max
-  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+  //mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
 
-  // Set accepted password to '0123'
-  for(int i = 0; i<PASSWORD_LENGTH; i++){
-    EEPROM.write(ACCEPTABLE_PASSWORD_BASE_ADDR + i, (byte)((char)i));
-  }
+  int pass[] = {0, 1, 2};
+  setAcceptedPassword(pass);
+
+  // Set initial variable states
+  reset();
 
   Serial.println("Setup Complete!");
 }
@@ -93,48 +88,59 @@ void loop() {
   // Read from keypad
   char key = keypad.getKey();
   if (key){
+    Serial.println(key);
     // Check if # was pressed
     if (key == '#'){
       lcd.clear();
 
-      bool debug_pass_accpt = true;
-      Serial.println("Comparing passwords...");
-      
-      byte inputPassword[PASSWORD_LENGTH];
-
-      // Check for equality with code
-      for(int i = 0; i < PASSWORD_LENGTH; i++){
-        byte input = EEPROM.read(INPUT_PASSWORD_BASE_ADDR + i);
-        byte correct = EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i);
-        inputPassword[i] = input;
-        debug_pass_accpt = debug_pass_accpt && (input == correct);
-      }
-
-      if(debug_pass_accpt){
-        Serial.println("***PASS ACCEPTED***");
-      }
-      
-      outputToComparator(inputPassword, PASSWORD_LENGTH, 100);
-      
+      bool correct = comparePasswords(true); //TODO: end debug
       // If comparator has accepted the password...
-      if(digitalRead(passAcceptedPin) == HIGH){
-        granted(10);
+      if(resettingPassword){
+        byte inputPassword[PASSWORD_LENGTH];
+        for(int i = 0; i < PASSWORD_LENGTH; i++){
+          inputPassword[i] = EEPROM.read(INPUT_PASSWORD_BASE_ADDR + i);
+        }
+        setAcceptedPassword(inputPassword);
+        resettingPassword = false;
+
+        lcd.clear();
+        lcdWriteSecondLine("Passcode Changed");
+        delay(1000);
+        reset();
       }
       else{
-        denied(10);
+        if(correct){
+          granted(1000);
+        }
+        else{
+          denied(1000);
+        }
       }
       
       currentPasswordAddr = 0;
     }
     // Check if * was pressed
     else if (key == '*'){
-      /** TODO: let user reset their password
-       *  Have this go through the same process as if they pressed #,
-       *  but this time if the password is accepted, prompt them to enter a new
-       *  password within X seconds that will replace their old one.
-       */
+      lcd.clear();
+
+      bool correct = comparePasswords(true); //TODO: end debug
+      // If comparator has accepted the password...
+      if(correct){
+        resettingPassword = true;
+        
+        lcd.clear();
+        lcdWriteSecondLine("Enter New Code");
+      }
+      else{
+        denied(1000);
+      }
+      
+      currentPasswordAddr = 0;
     }
     else{
+      Serial.print("User entered: ");
+      Serial.println(key);
+      
       // Record the pressed button into EEPROM if not over max length
       if(currentPasswordAddr < INPUT_PASSWORD_BASE_ADDR + PASSWORD_LENGTH){        
         EEPROM.write(INPUT_PASSWORD_BASE_ADDR + currentPasswordAddr, (byte)charToInt(key));
@@ -142,8 +148,6 @@ void loop() {
   
         // Output to LCD
         lcd.write(key);
-        Serial.print("User entered: ");
-        Serial.println(key);
       }
     }
   }
@@ -151,47 +155,73 @@ void loop() {
 
 // Helper methods to define other behaviors
 void reset(){
-  // Set LEDs to standby
-  digitalWrite(redLed, LED_OFF);
-  digitalWrite(greenLed, LED_OFF);
-  digitalWrite(blueLed, LED_ON);
-
-  // TODO: clear LCD screen
-  // TODO: set comparator done signal LOW
+  lcd.clear();
+  lcdWriteSecondLine("Enter Passcode");
 }
 
-void granted(uint16_t setDelay){
-  digitalWrite(redLed, LED_OFF);
-  digitalWrite(greenLed, LED_ON);
-  digitalWrite(blueLed, LED_OFF);
+void granted(int setDelay){
+  lcdWriteSecondLine("Access Granted");
   delay(setDelay);
   reset();
 }
 
-void denied(uint16_t setDelay){
-  digitalWrite(redLed, LED_ON);
-  digitalWrite(greenLed, LED_OFF);
-  digitalWrite(blueLed, LED_OFF);
+void denied(int setDelay){
+  lcdWriteSecondLine("Access Denied");
   delay(setDelay);
   reset();
 }
 
-void outputToComparator(byte pass[], int passLength, int clockDelay){
+void lcdWriteSecondLine(String s){
+  lcd.setCursor(0, 1);
+  lcd.print(s);
+  lcd.setCursor(0, 0);
+}
+
+void setAcceptedPassword(int pass[]){
+  for(int i = 0; i<PASSWORD_LENGTH; i++){
+    EEPROM.write(ACCEPTABLE_PASSWORD_BASE_ADDR + i, (byte)((char)pass[i]));
+  }
+}
+
+void setAcceptedPassword(byte pass[]){
+  for(int i = 0; i<PASSWORD_LENGTH; i++){
+    EEPROM.write(ACCEPTABLE_PASSWORD_BASE_ADDR + i, pass[i]);
+  }
+}
+
+void outputToComparator(byte pass[], int passLength){
   // Iterate over password length
   for(int i = 0; i < passLength; i++){
-    // Iterate over bits per byte
-    for(int j = 0; j < 8; j++){
+    // Iterate over relevant bits per byte (value will be <10, only need 4 bits)
+    for(int j = 0; j < 4; j++){
       // Output passwords for comparison
-      digitalWrite(inputPassPin, bitRead(pass[i], j));
-      digitalWrite(accptPassPin, bitRead(EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i), j));
-
-      // Output clock cycle with specified period
-      digitalWrite(clockPin, HIGH);
-      delay(clockDelay/2);
-      digitalWrite(clockPin, LOW);
-      delay(clockDelay/2);
+      digitalWrite(inputPassPin0 + (i+j)*2, bitRead(pass[i], j));
+      digitalWrite(accptPassPin0 + (i+j)*2, bitRead(EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i), j));
     }
   }
+}
+
+bool comparePasswords(bool debug){
+  Serial.println("Comparing passwords...");
+  byte inputPassword[PASSWORD_LENGTH];
+  
+  bool debug_pass_accpt = true;
+  
+  // Check for equality with code
+  for(int i = 0; i < PASSWORD_LENGTH; i++){
+    byte input = EEPROM.read(INPUT_PASSWORD_BASE_ADDR + i);
+    byte correct = EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i);
+    inputPassword[i] = input;
+    debug_pass_accpt = debug_pass_accpt && (input == correct);
+  }
+
+  if(debug){
+    return debug_pass_accpt;
+  }
+  
+  outputToComparator(inputPassword, PASSWORD_LENGTH);
+
+  return(digitalRead(passAcceptedPin) == HIGH);
 }
 
 int charToInt(char c){
