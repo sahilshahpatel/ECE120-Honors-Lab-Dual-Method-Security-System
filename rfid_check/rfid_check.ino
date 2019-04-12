@@ -8,14 +8,12 @@
 #include <LiquidCrystal.h>
 #include <stdbool.h>
 
-// Assuming Common Cathode
-#define LED_ON LOW
-#define LED_OFF HIGH
-
 // Define pins
-#define inputPassPin0 22
-#define accptPassPin0 23
 #define passAcceptedPin 2 // Output of comparator circuit
+#define clockPin 22
+#define setPin 24
+#define comparePin0 30
+#define comparePin1 32
 
 // Define EEPROM addresses
 #define INPUT_PASSWORD_BASE_ADDR 0
@@ -51,10 +49,6 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 void setup() {
   // intialiaze pinModes
-  for(int i = 0; i<4*PASSWORD_LENGTH; i++){
-    pinMode(inputPassPin0 + 2*i, OUTPUT);
-    pinMode(accptPassPin0 + 2*i, OUTPUT);
-  }
   pinMode(passAcceptedPin, INPUT);
   for(int i = 0; i < ROWS; i++){
     pinMode(rowPins[i], INPUT);
@@ -65,6 +59,11 @@ void setup() {
   for(int i = 3; i<=13; i++){
     pinMode(i, INPUT);
   }
+  pinMode(clockPin, OUTPUT);
+  pinMode(setPin, OUTPUT);
+  pinMode(comparePin0, OUTPUT);
+  pinMode(comparePin1, OUTPUT);
+  pinMode(passAcceptedPin, INPUT);
 
   // Initialize communications
   Serial.begin(9600); // Serial communication with computer
@@ -93,7 +92,7 @@ void loop() {
     if (key == '#'){
       lcd.clear();
 
-      bool correct = comparePasswords(true); //TODO: end debug
+      bool correct = comparePasswords(false); // Use hardware logic
       // If comparator has accepted the password...
       if(resettingPassword){
         byte inputPassword[PASSWORD_LENGTH];
@@ -123,7 +122,7 @@ void loop() {
     else if (key == '*'){
       lcd.clear();
 
-      bool correct = comparePasswords(true); //TODO: end debug
+      bool correct = comparePasswords(false); // Use hardware logic
       // If comparator has accepted the password...
       if(correct){
         resettingPassword = true;
@@ -132,6 +131,7 @@ void loop() {
         lcdWriteSecondLine("Enter New Code");
       }
       else{
+        resettingPassword = false;
         denied(1000);
       }
       
@@ -190,15 +190,28 @@ void setAcceptedPassword(byte pass[]){
 }
 
 void outputToComparator(byte pass[], int passLength){
+  // Set comparison to true initially
+  digitalWrite(setPin, HIGH);
+  delay(10);
+  digitalWrite(setPin, LOW);
+
   // Iterate over password length
   for(int i = 0; i < passLength; i++){
     // Iterate over relevant bits per byte (value will be <10, only need 4 bits)
     for(int j = 0; j < 4; j++){
       // Output passwords for comparison
-      digitalWrite(inputPassPin0 + (i+j)*2, bitRead(pass[i], j));
-      digitalWrite(accptPassPin0 + (i+j)*2, bitRead(EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i), j));
+      digitalWrite(comparePin0, bitRead(pass[i], j));
+      digitalWrite(comparePin1, bitRead(EEPROM.read(ACCEPTABLE_PASSWORD_BASE_ADDR + i), j));
+
+      pulseClock(10);
     }
   }
+}
+
+void pulseClock(int period){
+  digitalWrite(clockPin, HIGH);
+  delay(period);
+  digitalWrite(clockPin, LOW);
 }
 
 bool comparePasswords(bool debug){
