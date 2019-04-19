@@ -324,6 +324,7 @@ int charToInt(char c){
 bool getID() {
    // Getting ready for Reading PICCs
   if ( ! mfrc522.PICC_IsNewCardPresent()) { // If a new PICC placed to RFID reader continue
+    //Serial.println("No new RFID card");
     return false;
   }
   if ( ! mfrc522.PICC_ReadCardSerial()) {   // Since a PICC placed get Serial and continue
