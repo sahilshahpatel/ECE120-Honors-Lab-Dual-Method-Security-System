@@ -27,8 +27,6 @@ bool resettingPassword = false;
 byte currentPasswordAddr = 0;
 bool successRead = false;
 
-bool firstCard = true;
-
 const int lockDelay = 2000; // Lock stays open for 2 seconds
 const int denyDelay = 1000; // User must wait 1 seconds between attempts
 
@@ -106,8 +104,8 @@ void loop() {
     }
     Serial.println();
 
-    if(!firstCard){
-      // Check to see if accepted RFID     
+    if(!resettingPassword){
+      // Normal Case: Check to see if accepted RFID     
       bool correct = compareRFID();
       if(correct){
         granted();
@@ -117,8 +115,8 @@ void loop() {
       }
     }
     else{
-      // Set first RFID to the accepted
-      Serial.println("First Card... setting as accepted");
+      // If resetting: Set this RFID to the accepted
+      Serial.println("Setting card as accepted...");
       byte accepted[RFID_LENGTH];
       for(int i = 0; i < RFID_LENGTH; i++){
         accepted[i] = EEPROM.read(INPUT_RFID_BASE_ADDR + i);
@@ -132,7 +130,8 @@ void loop() {
       }
       Serial.println();
       
-      firstCard = false;
+      resettingPassword = false;
+      changed();
     }
     
     successRead = false; // Reset and prepare for next card
@@ -154,10 +153,7 @@ void loop() {
         setAcceptedPassword(inputPassword);
         resettingPassword = false;
 
-        lcd.clear();
-        lcdWriteSecondLine("Passcode Changed");
-        delay(lockDelay);
-        reset();
+        changed();
       }
       else{
         if(correct){
@@ -221,6 +217,13 @@ void denied(){
   lcd.clear();
   lcdWriteSecondLine("Access Denied");
   delay(denyDelay);
+  reset();
+}
+
+void changed(){
+  lcd.clear();
+  lcdWriteSecondLine("Passcode Changed");
+  delay(lockDelay);
   reset();
 }
 
